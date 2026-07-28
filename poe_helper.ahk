@@ -53,7 +53,7 @@ Loop
 
 UpdateFlasks()
 {
-    global iniKeys, flasksCd, combatFlasksCd, combatBindTick, movementBindTickd
+    global iniKeys, flasksCd, combatFlasksCd, combatBindTick, movementBindTick
     flaskTick := A_TickCount
     if (iniKeys["FlasksEnabled"] && flasksCd <= flaskTick && (flaskTick <= combatBindTick || flaskTick <= movementBindTick))
     {
