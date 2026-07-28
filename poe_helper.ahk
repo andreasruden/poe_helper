@@ -2,17 +2,14 @@
 ; Press Ctrl-9 and Ctrl-0 to set the pixel reading up, only done once
 
 ; CONFIG:
-iniKeys := {"DanceDelay": 1250, "FlaskDelay": 7200, "DanceBind": "r", "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "StanceOneX": -1, "StanceOneY": -1, "StanceOneColor": -1, "StanceTwoX": -1, "StanceTwoY": -1, "StanceTwoColor": -1, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "DanceStdDev": 50, "DanceClamp": 150, "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "DanceEnabled": false, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5}
+iniKeys := {"FlaskDelay": 7200, "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5}
 
 ; Data
-danceMemeCd := 0
 flasksCd := 0
 combatFlasksCd := 0
 readTownCd := 0
 lastTick := A_TickCount
 inTown := true
-stanceOne := [-1, -1, -1] ; X, Y, color
-stanceTwo := [-1, -1, -1] ; X, Y, color
 paused := true
 combatBindTick := 0
 movementBindTick := 0
@@ -22,29 +19,34 @@ ddStage := 0
 ddCd := 0
 ddKeyDown := false
 
+isLMBing := false
+isTujen := false
+tujenSlider := -1
+tujenRetX := 0
+tujenRetY := 0
+
 ReadConfig()
 
 Loop
 {
     Sleep, 20
-    
+
     if (lastTick > A_TickCount)
     {
         MsgBox, Wrap-around of tick-count. Closing script.
         ExitApp
     }
-    
+
     if (readTownCd <= A_TickCount)
     {
         ReadLastZone()
         readTownCd := NewCd(iniKeys["ReadTownCd"], 0)
     }
-        
+
     ; Execute expired events
     UpdateFlasks()
-    UpdateDance()
     UpdateDetonateDead()
-    
+
     ; Update key releases after events
     UpdateHeldKeys()
 }
@@ -58,7 +60,7 @@ UpdateFlasks()
         flasksCd := NewCd(iniKeys["FlaskDelay"], iniKeys["FlaskStdDev"], iniKeys["FlaskClamp"])
         if (!IsActive())
             return
-            
+
         playerFlaskBinds := Trim(iniKeys["FlaskBinds"])
         if (StrLen(playerFlaskBinds) > 0)
             Send, %playerFlaskBinds%
@@ -69,55 +71,10 @@ UpdateFlasks()
         combatFlasksCd := NewCd(iniKeys["FlaskDelay"], iniKeys["FlaskStdDev"], iniKeys["FlaskClamp"])
         if (!IsActive())
             return
-            
+
         playerFlaskBinds := Trim(iniKeys["CombatOnlyFlaskBinds"])
         if (StrLen(playerFlaskBinds) > 0)
             Send, %playerFlaskBinds%
-    }
-}
-
-UpdateDance()
-{
-    global iniKeys, danceMemeCd, combatBindTick, movementBindTick
-    danceTick := A_TickCount
-    if (iniKeys["DanceEnabled"] && danceMemeCd <= danceTick && (danceTick <= combatBindTick || danceTick <= movementBindTick))
-    {
-        if (!IsActive())
-        {
-            danceMemeCd := NewCd(iniKeys["DanceDelay"], iniKeys["DanceStdDev"], iniKeys["DanceClamp"])
-            return
-        }
-    
-        ; Send bind & do Pixel detection for cooldown
-        playerDanceBind := Trim(iniKeys["DanceBind"])
-        detected := false
-        tries := iniKeys["SpamTries"]
-        Loop, %tries%
-        {
-            Send, %playerDanceBind%
-            if (iniKeys["StanceOneX"] == -1 || iniKeys["StanceTwoX"] == -1)
-                break
-            if (!IsActive())
-                break
-            
-            color1 := ReadPixel(iniKeys["StanceOneX"], iniKeys["StanceOneY"])
-            color2 := ReadPixel(iniKeys["StanceTwoX"], iniKeys["StanceTwoY"])
-            if (color1 == iniKeys["StanceOneColor"] || color2 == iniKeys["StanceTwoColor"])
-            {
-                detected := true
-                break
-            }
-            
-            slp := iniKeys["SpamDelay"] + NormalRand(0, iniKeys["SpamStdDev"])
-            Sleep, %slp%
-        }
-        
-        if (!detected && iniKeys["StanceOneX"] != -1 && iniKeys["StanceTwoX"] != -1)
-            danceMemeCd := 3 * iniKeys["DanceDelay"] ; longer CD to indicate failure, will happen in loading screen
-        else
-            danceMemeCd := iniKeys["DanceDelay"]
-            
-        danceMemeCd := NewCd(danceMemeCd, iniKeys["DanceStdDev"], iniKeys["DanceClamp"])
     }
 }
 
@@ -130,19 +87,19 @@ UpdateDetonateDead()
         ddCd = 0
         return
     }
-    
+
     ddTick := A_TickCount
     if (ddTick < ddCd)
         return
-    
+
     if (ddStage == 0)
     {
         if (!ddKeyDown)
             return
-        
+
         ; Consider DD usage combat bind
         combatBindTick := A_TickCount + iniKeys["Recently"]
-    
+
         ; Cast Desecrate
         desecrateBind := Trim(iniKeys["DesecrateBind"])
         if (StrLen(desecrateBind) > 0)
@@ -200,7 +157,7 @@ IsActive()
 IsTyping()
 {
     global iniKeys
-    
+
     if (iniKeys["ChatX"] == -1)
         return false
     pixel := ReadPixel(iniKeys["ChatX"], iniKeys["ChatY"])
@@ -210,7 +167,7 @@ IsTyping()
 ReadLastZone()
 {
     global iniKeys, inTown
-    
+
     blockSize := 512
     f := FileOpen(iniKeys["LogFilePath"], "r")
     if (!IsObject(f))
@@ -229,14 +186,14 @@ ReadLastZone()
             MsgBox, Failed reading zone from POE log, exiting script.
             ExitApp
         }
-        
+
         ptr := ptr - blockSize
         if (ptr < 0)
             ptr := 0
-            
+
         f.Seek(ptr, SEEK_SET)
         partialFile := f.Read() ; read to end of file
-        
+
         found := InStr(partialFile, "You have entered", false, 0)
         if (found != 0)
         {
@@ -254,13 +211,13 @@ ReadLastZone()
 IsTown(zone)
 {
     areas := ["Hideout", "Rogue Harbour", "Oriath Docks", "Highgate", "Sarn Encampment", "Bridge Encampment", "Lioneye's Watch", "Forest Encampment", "Overseer's Tower"]
-    
+
     for _, area in areas
     {
         if (InStr(zone, area) != 0 && InStr(zone, "Syndicate Hideout") == 0)
             return true
     }
-    
+
     return false
 }
 
@@ -273,12 +230,12 @@ ReadConfig()
         if (val == "ERROR")
         {
             WriteConfig()
-            MsgBox % "Important!`nPlease edit " . A_MyDocuments . "\PoE_loop.ini before starting the script.`nPixel reading stances can be setup by using Ctrl-0 after starting the script.`nCtrl-9 sets up chat open detection.`nAlt-Mouse4 pauses/unpauses the script.`nScript will now close."
+            MsgBox % "Important!`nPlease edit " . A_MyDocuments . "\PoE_loop.ini before starting the script.`nCtrl-9 sets up chat open detection.`nAlt-Mouse4 pauses/unpauses the script.`nScript will now close."
             ExitApp
         }
         iniKeys[key] := val
     }
-    
+
     Hotkey, IfWinActive, ahk_exe PathOfExile.exe
     combatBinds := StrSplit(iniKeys["CombatBinds"], ",")
     movementBinds := StrSplit(iniKeys["MovementBinds"], ",")
@@ -335,7 +292,7 @@ NormalRand(mean, stdDev)
 UpdateHeldKeys()
 {
     global heldCombatKeys, heldMovementKeys, combatBindTick, movementBindTick, iniKeys, ddKeyDown
-    
+
     for key, state in heldCombatKeys
     {
         if (state && !GetKeyState(key, "P"))
@@ -344,7 +301,7 @@ UpdateHeldKeys()
             combatBindTick := A_TickCount + iniKeys["Recently"]
         }
     }
-    
+
     for key, state in heldMovementKeys
     {
         if (state && !GetKeyState(key, "P"))
@@ -353,17 +310,26 @@ UpdateHeldKeys()
             movementBindTick := A_TickCount + iniKeys["Recently"]
         }
     }
-    
+
     if (ddKeyDown && !GetKeyState(iniKeys["DetonateDeadTrigger"], "P"))
     {
         ddKeyDown := false
     }
 }
 
+WriteToChat(msg)
+{
+	ClipSaved := ClipboardAll
+	Clipboard := msg
+	Send {Enter}^v{Enter}
+	Clipboard := ClipSaved
+	ClipSaved := ""
+}
+
 CombatBindUsed:
     myKey := A_ThisHotkey
     myKey := SubStr(myKey, 3) ; remove $~
-    
+
     heldCombatKeys[myKey] := true
     combatBindTick := 2**32
 return
@@ -371,7 +337,7 @@ return
 MovementBindUsed:
     myKey := A_ThisHotkey
     myKey := SubStr(myKey, 3) ; remove $~
-    
+
     heldMovementKeys[myKey] := true
     movementBindTick := 2**32
 return
@@ -380,37 +346,9 @@ DetonateDeadBindUsed:
     ddKeyDown := true
 return
 
-^0::
-    paused := true
-    
-    ; Stance One
-    MsgBox, % "Pixel detection to notice when our attempt to activate stance 1 (e.g. sand stance) succeeds. Place cursor over the intended pixel (e.g. the stance icon as its cooldown just started) and then hit Tab"
-    KeyWait, Tab, D
-    MouseGetPos, x, y
-    color := ReadPixel(x, y)
-    Sleep, 100
-    iniKeys["StanceOneX"] := x
-    iniKeys["StanceOneY"] := y
-    iniKeys["StanceOneColor"] := color
-    
-    ; Stance Two
-    MsgBox, % "Pixel detection to notice when our attempt to activate stance 2 (e.g. blood stance) succeeds. Place cursor over the intended pixel (e.g. the stance icon as its cooldown just started) and then hit Tab"
-    KeyWait, Tab, D
-    MouseGetPos, x, y
-    color := ReadPixel(x, y)
-    Sleep, 100
-    iniKeys["StanceTwoX"] := x
-    iniKeys["StanceTwoY"] := y
-    iniKeys["StanceTwoColor"] := color
-    
-    MsgBox % "Read color " . iniKeys["StanceOneColor"] . " for stance 1 at X=" . iniKeys["StanceOneX"] . ", Y=" . iniKeys["StanceOneY"] . "`nAnd color " . iniKeys["StanceTwoColor"] . " for stance 2 at X=" . iniKeys["StanceTwoX"] . ", Y=" . iniKeys["StanceTwoY"]
-    WriteConfig()
-    paused := false
-return
-
 ^9::
     paused := true
-    
+
     MsgBox, % "This will detect chat being open/closed. Place cursor over the intended pixel and then hit Tab"
     KeyWait, Tab, D
     MouseGetPos, x, y
@@ -419,8 +357,8 @@ return
     iniKeys["ChatX"] := x
     iniKeys["ChatY"] := y
     iniKeys["ChatColor"] := color
-    
-    MsgBox % "Read color " . iniKeys["ChatColor"] . " for stance 1 at X=" . iniKeys["ChatX"] . ", Y=" . iniKeys["ChatY"]
+
+    MsgBox % "Read color " . iniKeys["ChatColor"] . " for chat detection at X=" . iniKeys["ChatX"] . ", Y=" . iniKeys["ChatY"]
     WriteConfig()
     paused := false
 return
@@ -428,15 +366,127 @@ return
 #IfWinActive ahk_exe PathOfExile.exe
 !XButton1::
     paused := !paused
-	if (paused) {
-		ToolTip, Loop OFF
-	} else {
-		ToolTip, Loop ON
-	}
-	SetTimer, RemoveToolTip, 1500
+    if (paused) {
+        ToolTip, Loop OFF
+    } else {
+        ToolTip, Loop ON
+    }
+    SetTimer, RemoveToolTip, 1500
 return
 
 RemoveToolTip:
-	SetTimer, RemoveToolTip, Off
-	ToolTip
+    SetTimer, RemoveToolTip, Off
+    ToolTip
+return
+
+$+F9::
+	if !enabled
+	{
+		return
+	}
+	while GetKeyState("F9", "P")
+	{
+		Click
+		Random, rand, 70, 120
+		Sleep rand
+	}
+return
+
+F1::
+	WriteToChat("/exit")
+return
+
+F5::
+	WriteToChat("/hideout")
+return
+
+F6::
+	WriteToChat("/kingsmarch")
+return
+
+F7::
+	WriteToChat("/heist")
+return
+
+F8::
+	WriteToChat("/monastery")
+return
+
+F9::
+	WriteToChat("/menagerie")
+return
+
+F10::
+	WriteToChat("/sanctum")
+return
+
+XButton1::
++XButton1::
+^XButton1::
+!A::
+    global isLMBing
+    isLMBing := !isLMBing
+    if (isLMBing)
+    {
+        SetTimer, LeftClickSpam, 30
+    }
+    else
+    {
+        SetTimer, LeftClickSpam, Off
+    }
+return
+LeftClickSpam:
+    if (GetKeyState("ctrl", "P") || GetKeyState("shift", "P"))
+    {
+        Click
+    }
+	else if (GetKeyState("alt", "P"))
+	{
+		Click, Right
+	}
+return
+
+^t::
+    isTujen := !isTujen
+    if (isTujen)
+    {
+		Hotkey, IfWinActive, ahk_exe PathOfExile.exe
+		Hotkey, ~Right, TujenGamble, On
+		Hotkey, ~Left, TujenReset, On
+    }
+    else
+    {
+        Hotkey, ~Right, TujenGamble, Off
+		Hotkey, ~Left, TujenReset, Off
+    }
+return
+
+TujenGamble:
+	if (tujenSlider < 0)
+	{
+		MouseGetPos, tujenRetX, tujenRetY
+		Click, Left ; Enter bid window
+		Sleep, 100
+		tujenSlider := 55
+		MouseClickDrag, Left, 730, 800, 630, 800, 0
+		MouseMove, 630, 860, 0
+		Click, Left ; Accept
+	}
+	else if (tujenSlider == 55)
+	{
+		tujenSlider = 75
+		MouseClickDrag, Left, 685, 800, 655, 800, 0
+		MouseMove, 630, 860, 0
+		Click, Left ; Accept
+	}
+	else if (tujenSlider == 75)
+	{
+		MouseMove, 630, 860, 0
+		Click, Left ; Accept
+	}
+return
+
+TujenReset:
+	MouseMove, tujenRetX, tujenRetY
+	tujenSlider := -1
 return
