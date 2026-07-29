@@ -27,6 +27,13 @@ tujenRetY := 0
 
 ReadConfig()
 
+Menu, TravelMenu, Add, &1 Kingsmarch, TravelKingsmarch
+Menu, TravelMenu, Add, &2 Heist, TravelHeist
+Menu, TravelMenu, Add, &3 Monastery, TravelMonastery
+Menu, TravelMenu, Add, &4 Menagerie, TravelMenagerie
+Menu, TravelMenu, Add, &5 Sanctum, TravelSanctum
+Menu, TravelMenu, Add, &6 Delve, TravelDelve
+
 Loop
 {
     Sleep, 20
@@ -400,24 +407,32 @@ F5::
 	WriteToChat("/hideout")
 return
 
-F6::
+F3::
+	Menu, TravelMenu, Show
+return
+
+TravelKingsmarch:
 	WriteToChat("/kingsmarch")
 return
 
-F7::
+TravelHeist:
 	WriteToChat("/heist")
 return
 
-F8::
+TravelMonastery:
 	WriteToChat("/monastery")
 return
 
-F9::
+TravelMenagerie:
 	WriteToChat("/menagerie")
 return
 
-F10::
+TravelSanctum:
 	WriteToChat("/sanctum")
+return
+
+TravelDelve:
+	WriteToChat("/delve")
 return
 
 XButton1::
