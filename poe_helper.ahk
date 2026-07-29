@@ -217,7 +217,7 @@ ReadLastZone()
 
 IsTown(zone)
 {
-    areas := ["Hideout", "Rogue Harbour", "Oriath Docks", "Highgate", "Sarn Encampment", "Bridge Encampment", "Lioneye's Watch", "Forest Encampment", "Overseer's Tower", "Monastery of the Keepers", "The Menagerie", "Kingsmarch", "The Sovereign"]
+    areas := ["Hideout", "Rogue Harbour", "Oriath Docks", "Highgate", "Sarn Encampment", "Bridge Encampment", "Lioneye's Watch", "Forest Encampment", "Overseer's Tower", "Monastery of the Keepers", "Kingsmarch", "The Sovereign"]
 
     for _, area in areas
     {
