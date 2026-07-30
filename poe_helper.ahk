@@ -2,13 +2,15 @@
 ; Press Ctrl-9 and Ctrl-0 to set the pixel reading up, only done once
 
 ; CONFIG:
-iniKeys := {"FlaskDelay": 7200, "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5}
+iniKeys := {"FlaskDelay": 7200, "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "OncePerZoneFlaskBinds": "", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5}
 
 ; Data
 flasksCd := 0
 combatFlasksCd := 0
 readTownCd := 0
 lastTick := A_TickCount
+lastZone := ""
+oncePerZoneFlaskUsed := false
 inTown := true
 paused := true
 combatBindTick := 0
@@ -60,7 +62,7 @@ Loop
 
 UpdateFlasks()
 {
-    global iniKeys, flasksCd, combatFlasksCd, combatBindTick, movementBindTick
+    global iniKeys, flasksCd, combatFlasksCd, combatBindTick, movementBindTick, oncePerZoneFlaskUsed
     flaskTick := A_TickCount
     if (iniKeys["FlasksEnabled"] && flasksCd <= flaskTick && (flaskTick <= combatBindTick || flaskTick <= movementBindTick))
     {
@@ -82,6 +84,16 @@ UpdateFlasks()
         playerFlaskBinds := Trim(iniKeys["CombatOnlyFlaskBinds"])
         if (StrLen(playerFlaskBinds) > 0)
             Send, %playerFlaskBinds%
+    }
+
+    oncePerZoneFlaskBinds := Trim(iniKeys["OncePerZoneFlaskBinds"])
+    if (iniKeys["FlasksEnabled"] && StrLen(oncePerZoneFlaskBinds) > 0 && !oncePerZoneFlaskUsed && (flaskTick <= combatBindTick || flaskTick <= movementBindTick))
+    {
+        if (!IsActive())
+            return
+
+        Send, %oncePerZoneFlaskBinds%
+        oncePerZoneFlaskUsed := true
     }
 }
 
@@ -173,7 +185,7 @@ IsTyping()
 
 ReadLastZone()
 {
-    global iniKeys, inTown
+    global iniKeys, inTown, lastZone, oncePerZoneFlaskUsed
 
     blockSize := 512
     f := FileOpen(iniKeys["LogFilePath"], "r")
@@ -209,6 +221,9 @@ ReadLastZone()
             if (dot == 0)
                 return
             zone := Trim(SubStr(partialFile, found, dot - found))
+            if (zone != lastZone)
+                oncePerZoneFlaskUsed := false
+            lastZone := zone
             inTown := IsTown(zone)
             return
         }
