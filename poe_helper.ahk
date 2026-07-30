@@ -10,6 +10,7 @@ combatFlasksCd := 0
 readTownCd := 0
 lastTick := A_TickCount
 lastZone := ""
+lastZoneEntryId := ""
 oncePerZoneFlaskUsed := false
 inTown := true
 paused := true
@@ -185,7 +186,7 @@ IsTyping()
 
 ReadLastZone()
 {
-    global iniKeys, inTown, lastZone, oncePerZoneFlaskUsed
+    global iniKeys, inTown, lastZone, lastZoneEntryId, oncePerZoneFlaskUsed
 
     blockSize := 512
     f := FileOpen(iniKeys["LogFilePath"], "r")
@@ -216,13 +217,21 @@ ReadLastZone()
         found := InStr(partialFile, "You have entered", false, 0)
         if (found != 0)
         {
+            ; Grab the log line's timestamp/counter prefix as a unique entry id: league mechanics can
+            ; re-enter a zone with the same name, so matching the zone name alone misses those transitions
+            lineStart := found
+            while (lineStart > 1 && SubStr(partialFile, lineStart - 1, 1) != "`n")
+                lineStart := lineStart - 1
+            entryId := Trim(SubStr(partialFile, lineStart, found - lineStart))
+
             found := found + StrLen("You have entered")
             dot := InStr(partialFile, ".", false, found)
             if (dot == 0)
                 return
             zone := Trim(SubStr(partialFile, found, dot - found))
-            if (zone != lastZone)
+            if (entryId != lastZoneEntryId)
                 oncePerZoneFlaskUsed := false
+            lastZoneEntryId := entryId
             lastZone := zone
             inTown := IsTown(zone)
             return
