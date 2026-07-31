@@ -2,7 +2,7 @@
 ; Press Ctrl-9 and Ctrl-0 to set the pixel reading up, only done once
 
 ; CONFIG:
-iniKeys := {"FlaskDelay": 7200, "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "OncePerZoneFlaskBinds": "", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5}
+iniKeys := {"FlaskDelay": 7200, "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "OncePerZoneFlaskBinds": "", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5, "TeleportMenu": "kingsmarch,heist,monastery,menagerie,sanctum,delve,boat"}
 
 ; Data
 flasksCd := 0
@@ -21,6 +21,7 @@ heldMovementKeys := []
 ddStage := 0
 ddCd := 0
 ddKeyDown := false
+travelMenuCommands := []
 
 isLMBing := false
 isTujen := false
@@ -30,12 +31,7 @@ tujenRetY := 0
 
 ReadConfig()
 
-Menu, TravelMenu, Add, &1 Kingsmarch, TravelKingsmarch
-Menu, TravelMenu, Add, &2 Heist, TravelHeist
-Menu, TravelMenu, Add, &3 Monastery, TravelMonastery
-Menu, TravelMenu, Add, &4 Menagerie, TravelMenagerie
-Menu, TravelMenu, Add, &5 Sanctum, TravelSanctum
-Menu, TravelMenu, Add, &6 Delve, TravelDelve
+BuildTravelMenu()
 
 Loop
 {
@@ -294,6 +290,30 @@ WriteConfig()
     }
 }
 
+BuildTravelMenu()
+{
+    global iniKeys, travelMenuCommands
+    travelMenuCommands := []
+
+    for _, rawZone in StrSplit(iniKeys["TeleportMenu"], ",")
+    {
+        zone := Trim(rawZone)
+        if (zone == "")
+            continue
+
+        travelMenuCommands.Push("/" . zone)
+        label := Format("{:U}", SubStr(zone, 1, 1)) . SubStr(zone, 2)
+        itemPos := travelMenuCommands.Length()
+        Menu, TravelMenu, Add, &%itemPos% %label%, TravelMenuClicked
+    }
+}
+
+TravelMenuClicked(ItemName, ItemPos, MenuName)
+{
+    global travelMenuCommands
+    WriteToChat(travelMenuCommands[ItemPos])
+}
+
 ReadPixel(x, y)
 {
     if (iniKeys["UseSlowPixelDetection"])
@@ -433,30 +453,6 @@ return
 
 F3::
 	Menu, TravelMenu, Show
-return
-
-TravelKingsmarch:
-	WriteToChat("/kingsmarch")
-return
-
-TravelHeist:
-	WriteToChat("/heist")
-return
-
-TravelMonastery:
-	WriteToChat("/monastery")
-return
-
-TravelMenagerie:
-	WriteToChat("/menagerie")
-return
-
-TravelSanctum:
-	WriteToChat("/sanctum")
-return
-
-TravelDelve:
-	WriteToChat("/delve")
 return
 
 XButton1::
