@@ -2,7 +2,7 @@
 ; Press Ctrl-9 and Ctrl-0 to set the pixel reading up, only done once
 
 ; CONFIG:
-iniKeys := {"FlaskDelay": 7200, "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "OncePerZoneFlaskBinds": "", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5, "TeleportMenu": "kingsmarch,heist,monastery,menagerie,sanctum,delve,boat"}
+iniKeys := {"FlaskDelay": 7200, "FlaskBinds": "3", "CombatOnlyFlaskBinds": "245", "OncePerZoneFlaskBinds": "", "UseAltPixelDetection": False, "UseSlowPixelDetection": false, "ReadTownCd": 3000, "LogFilePath": "C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt", "FlaskStdDev": 150, "FlaskClamp": 450, "SpamDelay": 70, "SpamStdDev": 7, "SpamTries": 10, "FlasksEnabled": true, "ChatX": -1, "ChatY": -1, "ChatColor": -1, "MovementBinds": "LButton,q,a", "CombatBinds": "RButton,w,e,s,Space", "Recently": 1000, "DetonateDeadEnabled": False, "DetonateDeadTrigger": "d", "DesecrateBind": "RButton", "DetonateDeadBind": "s", "DesecrateCastsPerSecond": 2.5, "DetonateDeadCastsPerSecond": 1.5, "TeleportMenu": "kingsmarch,heist,monastery,menagerie,sanctum,delve,boat", "TeleportMenuHotkeys": 0}
 
 ; Data
 flasksCd := 0
@@ -279,6 +279,14 @@ ReadConfig()
     {
         HotKey, $~%ddKeyName%, DetonateDeadBindUsed, On ; hardware only, pass-through
     }
+
+    ; F6, F7, ... map directly to the first N entries of TeleportMenu
+    Loop, % iniKeys["TeleportMenuHotkeys"]
+    {
+        fKey := "F" . (A_Index + 5)
+        boundFunc := Func("TravelHotkeyPressed").Bind(A_Index)
+        Hotkey, %fKey%, % boundFunc
+    }
 }
 
 WriteConfig()
@@ -294,6 +302,7 @@ BuildTravelMenu()
 {
     global iniKeys, travelMenuCommands
     travelMenuCommands := []
+    hotkeyCount := iniKeys["TeleportMenuHotkeys"]
 
     for _, rawZone in StrSplit(iniKeys["TeleportMenu"], ",")
     {
@@ -302,9 +311,14 @@ BuildTravelMenu()
             continue
 
         travelMenuCommands.Push("/" . zone)
-        label := Format("{:U}", SubStr(zone, 1, 1)) . SubStr(zone, 2)
+        name := Format("{:U}", SubStr(zone, 1, 1)) . SubStr(zone, 2)
         itemPos := travelMenuCommands.Length()
-        Menu, TravelMenu, Add, &%itemPos% %label%, TravelMenuClicked
+
+        label := "&" . itemPos . ". " . name
+        if (itemPos <= hotkeyCount)
+            label .= " (F" . (itemPos + 5) . ")"
+
+        Menu, TravelMenu, Add, %label%, TravelMenuClicked
     }
 }
 
@@ -312,6 +326,14 @@ TravelMenuClicked(ItemName, ItemPos, MenuName)
 {
     global travelMenuCommands
     WriteToChat(travelMenuCommands[ItemPos])
+}
+
+TravelHotkeyPressed(index)
+{
+    global travelMenuCommands
+    if (index > travelMenuCommands.Length())
+        return
+    WriteToChat(travelMenuCommands[index])
 }
 
 ReadPixel(x, y)
