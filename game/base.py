@@ -1,0 +1,2 @@
+class GameWindowNotFound(RuntimeError):
+    pass
