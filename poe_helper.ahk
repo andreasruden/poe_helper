@@ -390,6 +390,28 @@ UpdateHeldKeys()
     }
 }
 
+ReadStackSize()
+{
+    ClipSaved := ClipboardAll
+    Clipboard := ""
+    Send, ^!c
+    ClipWait, 0.5
+    if (ErrorLevel || Clipboard == "")
+    {
+        Clipboard := ClipSaved
+        return 0
+    }
+
+    clipText := Clipboard
+    Clipboard := ClipSaved
+    ClipSaved := ""
+
+    if (!RegExMatch(clipText, "Stack Size:\s*(\d+)\s*/\s*\d+", m))
+        return 0
+
+    return m1
+}
+
 WriteToChat(msg)
 {
 	ClipSaved := ClipboardAll
@@ -480,7 +502,6 @@ return
 XButton1::
 +XButton1::
 ^XButton1::
-!A::
     global isLMBing
     isLMBing := !isLMBing
     if (isLMBing)
@@ -490,6 +511,42 @@ XButton1::
     else
     {
         SetTimer, LeftClickSpam, Off
+    }
+return
+
+!A::
+    stackSize := ReadStackSize()
+    if (stackSize)
+    {
+		; Click in the item
+        Send, ^{Click}
+		; Swap to look at reverse trade
+        MouseMove, 873, 246, 0
+        Send, ^{Click}
+		; Wait for server query
+        Sleep, 500
+		; Paste how many we want to buy
+		MouseClick, Left, 530, 238, 1, 0
+        ClipSaved := ClipboardAll
+        Clipboard := stackSize
+        Send, ^v
+        Clipboard := ClipSaved
+        ClipSaved := ""
+		; Delete original suggestion
+		MouseClick, Left, 714, 244, 1, 0
+		Send, {Delete}
+		; Deselect box
+		MouseClick, Left, 648, 235, 1, 0
+		; Wait for UI to update
+		Sleep, 500
+		; Lock in new suggestion
+		MouseClick, Left, 714, 244, 1, 0
+		; Swap back to original trade
+        MouseMove, 873, 246, 0
+        Send, ^{Click}
+		; Position above place order
+        Sleep, 300
+        MouseMove, 620, 320, 0
     }
 return
 LeftClickSpam:
