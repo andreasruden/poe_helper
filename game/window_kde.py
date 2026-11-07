@@ -1,3 +1,4 @@
+import atexit
 from typing import Any
 import os
 import re
@@ -11,6 +12,26 @@ KWIN = "org.kde.KWin"
 SHOT_PATH, SHOT_IFACE = "/org/kde/KWin/ScreenShot2", "org.kde.KWin.ScreenShot2"
 RESOURCE_CLASS = "steam_app_238960"
 
+FOCUS_XML = """
+<node>
+  <interface name="poe_helper.Focus">
+    <method name="Focused">
+      <arg name="uuid" type="s" direction="in"/>
+      <arg name="resource_class" type="s" direction="in"/>
+    </method>
+  </interface>
+</node>
+"""
+
+FOCUS_JS_FMTSTR = """
+function sendBusReport(w) {{
+  callDBus("{bus_name}", "/PoeHelper/Focus", "poe_helper.Focus", "Focused", w ? w.internalId.toString() : "",
+    w ? w.resourceClass : "");
+}}
+workspace.windowActivated.connect(sendBusReport);
+sendBusReport(workspace.activeWindow);
+"""
+
 _bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
 
@@ -19,6 +40,7 @@ class GameWindow:
         self._uuid: str | None = None
         self._geometry: tuple[int, int, int, int] | None = None
         self._geometry_refresh_time: float = 0.0
+        self._install_focus_tracker()
 
     def _find_uuid(self) -> str:
         res = _call("/WindowsRunner", "org.kde.krunner1", "Match", GLib.Variant("(s)", ("Path of Exile",))).unpack()[0]
@@ -89,6 +111,61 @@ class GameWindow:
     def get_pixel(self, x: int, y: int) -> tuple[int, int, int]:
         """RGB tuple of the pixel at window-relative (x, y)."""
         return self.get_region(x, y, 1, 1)[0][0]
+
+    def is_focused(self) -> bool:
+        while self._glib_ctx.iteration(False):
+            pass
+        return self.active_resource_class == RESOURCE_CLASS
+
+    def _install_focus_tracker(self) -> None:
+        self.active_uuid = None
+        self.active_resource_class = None
+        self._reg_id: int | None = None
+        self._script_path: str | None = None
+        self._glib_ctx = GLib.MainContext.default()
+
+        interface = Gio.DBusNodeInfo.new_for_xml(FOCUS_XML).interfaces[0]
+        self._reg_id = _bus.register_object("/PoeHelper/Focus", interface, self._on_focused, None, None)
+
+        # Add the javascript script
+        self._script_path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "poe_helper_focus.js")
+        with open(self._script_path, "w") as f:
+            f.write(FOCUS_JS_FMTSTR.format(bus_name=_bus.get_unique_name()))
+        _call("/Scripting", "org.kde.kwin.Scripting", "unloadScript", GLib.Variant("(s)", ("poe_helper_focus.js",)))
+        script_id = _call("/Scripting", "org.kde.kwin.Scripting", "loadScript",
+            GLib.Variant("(ss)", (self._script_path, "poe_helper_focus.js"))).unpack()[0]
+        if script_id < 0:
+            raise RuntimeError("KWin rejected the focus script")  # XXX: more info?
+        _call(f"/Scripting/Script{script_id}", "org.kde.kwin.Script", "run", None)
+
+        atexit.register(self._uninstall_focus_tracker)
+
+        # Wait for the first report
+        deadline = time.monotonic() + 3.0
+        while self.active_resource_class is None and time.monotonic() < deadline:
+            self._glib_ctx.iteration(False) or time.sleep(0.01)
+
+    def _uninstall_focus_tracker(self) -> None:
+        try:
+            _call("/Scripting", "org.kde.kwin.Scripting", "unloadScript",
+                  GLib.Variant("(s)", ("poe_helper_focus.js",)))
+        except GLib.Error:
+            pass
+        if self._reg_id is not None:
+            _bus.unregister_object(self._reg_id)
+            self._reg_id = None
+        if self._script_path is not None:
+            try:
+                os.unlink(self._script_path)
+            except FileNotFoundError:
+                pass
+
+    def _on_focused(self, _conn, _sender, _path, _iface, method, params, invocation):
+        if method == "Focused":
+            uuid, resource_class = params.unpack()
+            self.active_uuid = uuid or None
+            self.active_resource_class = resource_class or None
+        invocation.return_value(None)
 
 
 def _call(path: str, iface: str, method: str, params: GLib.Variant | None, reply_type: str | None = None,
