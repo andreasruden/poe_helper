@@ -1,10 +1,10 @@
 import os
 import sys
 
-from .base import GameWindowNotFound
+from .base import GameWindowAPI, GameWindowNotFound
 
 
-def _select_gamewindow_impl() -> type:
+def _select_gamewindow_impl() -> type[GameWindowAPI]:
     if sys.platform == "win32":
         from .window_win import GameWindow
     elif sys.platform == "linux":
@@ -19,6 +19,6 @@ def _select_gamewindow_impl() -> type:
     return GameWindow
 
 
-GameWindow: type = _select_gamewindow_impl()
+GameWindow: type[GameWindowAPI] = _select_gamewindow_impl()
 
 __all__: list[str] = ["GameWindow", "GameWindowNotFound"]
