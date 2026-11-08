@@ -1,14 +1,15 @@
-import subprocess
-import json
+import asyncio
 import atexit
 import configparser
-from typing import Any
+import json
 import os
 import re
+import subprocess
 import time
+from typing import Any, Callable, Tuple
 
+from evdev import AbsInfo, InputDevice, UInput, ecodes, list_devices
 from gi.repository import Gio, GLib
-from evdev import AbsInfo, UInput, ecodes
 from xkbcommon import xkb
 
 from .base import GameWindowNotFound, MouseButton
@@ -42,11 +43,28 @@ MOUSE_BUTON_MAP = {
     MouseButton.RIGHT: ecodes.BTN_RIGHT,
 }
 
+MODS: dict[str, int] = {
+    "^": ecodes.KEY_LEFTCTRL,
+    "!": ecodes.KEY_LEFTALT,
+    "+": ecodes.KEY_LEFTSHIFT,
+    "#": ecodes.KEY_LEFTMETA,
+}
+MOD_CODES: frozenset[int] = frozenset(MODS.values())
+
+MOUSE_KEYS: dict[str, tuple[int, ...]] = {
+    "xbutton1": (ecodes.BTN_SIDE, ecodes.BTN_BACK),
+    "xbutton2": (ecodes.BTN_EXTRA, ecodes.BTN_FORWARD),
+    "mbutton": (ecodes.BTN_MIDDLE,),
+}
+
 _bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
 
 class GameWindow:
-    def __init__(self) -> None:
+    def __init__(self, evloop: asyncio.AbstractEventLoop) -> None:
+        self.evloop: asyncio.AbstractEventLoop = evloop
+        self._binds: dict[Tuple[frozenset[int], int], Callable[[], None]] = {}
+        self._held: set[int] = set()
         self._uuid: str | None = None
         self._geometry: tuple[int, int, int, int] | None = None
         self._geometry_refresh_time: float = 0.0
@@ -152,6 +170,34 @@ class GameWindow:
             time.sleep(0.05)
             self._key(real_button, 0)
     
+    # FIXME: We need to regenerate the binds when the layout changes
+    def set_hotkey(self, keys: str, callback: Callable[[], None]) -> None:
+        mods = set()
+        i = 0
+        while i < len(keys) - 1 and keys[i] in MODS:  # a modifier can be a bind on its own
+            mods.add(MODS[keys[i]])
+            i += 1
+        key = keys[i:]
+        if not key:
+            raise ValueError(f"hotkey {keys!r} has no key")
+        
+        codes: tuple[int, ...]
+        if len(key) == 1:
+            if key not in self._char_map:
+                raise ValueError(f"key {key!r} not on current layout")
+            code, char_mods = self._char_map[key]
+            mods |= MOD_CODES & set(char_mods)
+            codes = (code,)
+        elif key.lower() in MOUSE_KEYS:
+            codes = MOUSE_KEYS[key.lower()]
+        else:
+            code = ecodes.ecodes.get(f"KEY_{key.upper()}")
+            if code is None:
+                raise ValueError(f"unknown key name: {key!r}")
+            codes = (code,)
+        for code in codes:
+            self._binds[(frozenset(mods), code)] = callback
+    
     def _key(self, code: int, state: int) -> None:
         self._uinput.write(ecodes.EV_KEY, code, state)
         self._uinput.syn()
@@ -218,6 +264,17 @@ class GameWindow:
                               None, Gio.DBusSignalFlags.NONE, self._update_char_map_cb)
         self._update_char_map()
 
+        # Setup reading of real devices
+        self._devices = []
+        for path in list_devices():
+            device = InputDevice(path)
+            if not set(device.capabilities().get(ecodes.EV_KEY, [])):
+                continue
+            assert device.name != "poe_helper kb+m"
+            self._devices.append(device)
+            self.evloop.add_reader(device.fd, self._on_readable_device, device)
+
+        # Install our virtual kb+m device
         keys_skip = set(range(ecodes.BTN_JOYSTICK, ecodes.BTN_WHEEL))
         capabilities = {
             ecodes.EV_KEY: [c for c in ecodes.keys if c not in keys_skip],
@@ -242,7 +299,30 @@ class GameWindow:
             layout_index = _call("/Layouts", "org.kde.KeyboardLayouts", "getLayout", None, "(u)",
                                  dest="org.kde.keyboard").unpack()[0]
         self._char_map = _build_char_map(layout_index)
+    
+    def _on_readable_device(self, device):
+        try:
+            events = list(device.read())
+        except OSError:
+            self.evloop.remove_reader(device.fd)
+            self._devices.remove(device)
+            device.close()
+            return
+        for ev in events:
+            if ev.type != ecodes.EV_KEY:
+                continue
+            if ev.value == 1:
+                self._held.add(ev.code)
+            elif ev.value == 0:
+                self._held.discard(ev.code)
+            self._on_key(ev.code, ev.value)
 
+    def _on_key(self, code, value):
+        if value != 1 or code in MOD_CODES or not self.is_focused():
+            return
+        mods = MOD_CODES & self._held
+        if callback := self._binds.get((mods, code)):
+            callback()
 
 def _build_char_map(layout_index: int = 0) -> dict[str, tuple[int, tuple[int, ...]]]:
     cfg = configparser.ConfigParser(interpolation=None)
