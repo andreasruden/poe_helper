@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "evdev; sys_platform == 'linux'",
     "xkbcommon; sys_platform == 'linux'",
+    "inotify_simple; sys_platform == 'linux'",
 ]
 
 [build-system]

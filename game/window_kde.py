@@ -6,11 +6,15 @@ import os
 import re
 import subprocess
 import time
+from multiprocessing.sharedctypes import Value
 from typing import Any, Callable, Tuple
 
 from evdev import AbsInfo, InputDevice, UInput, ecodes, list_devices
 from gi.repository import Gio, GLib
+from inotify_simple import INotify, flags
 from xkbcommon import xkb
+
+from game.base import ZoneEvent, last_zone_in_file, parse_zone_line
 
 from .base import GameWindowNotFound, MouseButton
 
@@ -57,19 +61,24 @@ MOUSE_KEYS: dict[str, tuple[int, ...]] = {
     "mbutton": (ecodes.BTN_MIDDLE,),
 }
 
+LOG_PATH = "~/.local/share/Steam/steamapps/common/Path of Exile/logs/Client.txt"  # FIXME: should come from config
+
 _bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
 
 class GameWindow:
     def __init__(self, evloop: asyncio.AbstractEventLoop) -> None:
         self.evloop: asyncio.AbstractEventLoop = evloop
+        self.zone: ZoneEvent | None = None
         self._binds: dict[Tuple[frozenset[int], int], Callable[[], None]] = {}
         self._held: set[int] = set()
         self._uuid: str | None = None
         self._geometry: tuple[int, int, int, int] | None = None
         self._geometry_refresh_time: float = 0.0
+        self._zone_cbs: list[Callable[[ZoneEvent], None]] = []
         self._install_focus_tracker()
         self._install_evdev()
+        self._install_log_tail(os.path.expanduser(LOG_PATH))
 
     def _find_uuid(self) -> str:
         res = _call("/WindowsRunner", "org.kde.krunner1", "Match", GLib.Variant("(s)", ("Path of Exile",))).unpack()[0]
@@ -198,6 +207,11 @@ class GameWindow:
         for code in codes:
             self._binds[(frozenset(mods), code)] = callback
     
+    def on_zone_change(self, callback: Callable[[ZoneEvent], None]) -> None:
+        self._zone_cbs.append(callback)
+        if self.zone is not None:
+            callback(self.zone)
+    
     def _key(self, code: int, state: int) -> None:
         self._uinput.write(ecodes.EV_KEY, code, state)
         self._uinput.syn()
@@ -323,6 +337,51 @@ class GameWindow:
         mods = MOD_CODES & self._held
         if callback := self._binds.get((mods, code)):
             callback()
+    
+    def _install_log_tail(self, path):
+        self._inotify = None
+        self._logfile = None
+        self._logfile_path = path
+        self.zone = last_zone_in_file(path)
+        self._open_logfile()
+        self._inotify = INotify()
+        self._inotify.add_watch(path, flags.MODIFY | flags.MOVE_SELF | flags.DELETE_SELF)
+        self.evloop.add_reader(self._inotify.fd, self._on_log_event)
+        atexit.register(self._uninstall_log_tail)
+    
+    def _open_logfile(self):
+        if getattr(self, "_logfile", None) is not None:
+            self._logfile.close()
+        self._logfile = open(self._logfile_path, "rb")
+        self._logfile.seek(0, os.SEEK_END)
+        self._logfile_buf = b""
+    
+    def _uninstall_log_tail(self):
+        if self._inotify is not None:
+            try:
+                self.evloop.remove_reader(self._inotify.fd)
+            except (ValueError, RuntimeError):
+                pass
+            self._inotify.close()
+            self._inotify = None
+        if self._logfile is not None:
+            self._logfile.close()
+            self._logfile = None
+    
+    def _on_log_event(self):
+        evs = self._inotify.read(timeout=0)
+        if any(e.mask & (flags.MOVE_SELF | flags.DELETE_SELF) for e in evs):
+            return self._open_logfile()
+        if os.fstat(self._logfile.fileno()).st_size < self._logfile.tell():
+            self._logfile.seek(0)  # truncated
+        self._logfile_buf += self._logfile.read()
+        *lines, self._logfile_buf = self._logfile_buf.split(b"\n")
+        for raw in lines:
+            if (evt := parse_zone_line(raw.decode("utf-8", "replace"))):
+                self.zone = evt
+                for cb in self._zone_cbs:
+                    cb(evt)
+
 
 def _build_char_map(layout_index: int = 0) -> dict[str, tuple[int, tuple[int, ...]]]:
     cfg = configparser.ConfigParser(interpolation=None)
