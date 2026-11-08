@@ -1,7 +1,7 @@
 import os
 import sys
 
-from .base import GameWindowAPI, GameWindowNotFound
+from .base import GameWindowAPI, GameWindowNotFound, MouseButton
 
 
 def _select_gamewindow_impl() -> type[GameWindowAPI]:
@@ -21,4 +21,4 @@ def _select_gamewindow_impl() -> type[GameWindowAPI]:
 
 GameWindow: type[GameWindowAPI] = _select_gamewindow_impl()
 
-__all__: list[str] = ["GameWindow", "GameWindowNotFound"]
+__all__: list[str] = ["GameWindow", "GameWindowAPI", "GameWindowNotFound", "MouseButton"]
